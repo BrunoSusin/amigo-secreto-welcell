@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amigo Secreto da Welcell</title>
+<style>
+:root{--bg:#fff6f0;--card:#fff;--ink:#2a1a1a;--muted:#7a6460;--brand:#c8102e;--brand-ink:#fff;--accent:#1f7a4d;--line:#f0d9d0;--chip:#ffe9c7;--chip-ink:#6b4200}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1212;--card:#271a1a;--ink:#fbeee9;--muted:#c2a49d;--brand:#ff4d63;--brand-ink:#2a0008;--accent:#5fd49a;--line:#44302f;--chip:#4a3512;--chip-ink:#ffd98a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:20px 16px 40px}
+header{text-align:center;padding:12px 0 18px}
+.gift{font-size:48px;line-height:1}
+h1{margin:8px 0 6px;font-size:28px;color:var(--brand)}
+.chip{display:inline-block;background:var(--chip);color:var(--chip-ink);padding:6px 14px;border-radius:999px;font-weight:600;font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:16px}
+h2{margin:0 0 10px;font-size:18px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 18px;background:var(--brand);color:var(--brand-ink);cursor:pointer}
+button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);padding:8px 12px;font-weight:500;font-size:14px}
+button:disabled{opacity:.5;cursor:default}
+ul.l{list-style:none;margin:0;padding:0}
+ul.l li{display:flex;align-items:center;justify-content:space-between;padding:10px 4px;border-bottom:1px solid var(--line)}
+ul.l li:last-child{border-bottom:0}
+.msg{margin:10px 0 0;font-size:14px;color:var(--muted)}
+.err{color:var(--brand)}
+.reveal{text-align:center;padding:18px 8px 4px}
+.reveal .big{font-size:32px;font-weight:800;color:var(--accent);margin:6px 0;word-break:break-word}
+.hidden{display:none}
+details summary{cursor:pointer;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="gift">🎁</div>
+  <h1>Amigo Secreto da Welcell</h1>
+  <span class="chip">Valor do presente: R$ 100 a R$ 150</span>
+</header>
+
+<section id="joinCard" class="card hidden">
+  <h2>Quer participar?</h2>
+  <div class="row">
+    <input id="nameInput" type="text" maxlength="40" placeholder="Digite seu nome" autocomplete="off">
+    <button id="joinBtn">Entrar</button>
+  </div>
+  <p id="joinMsg" class="msg">É só colocar o nome. Sem cadastro.</p>
+</section>
+
+<section id="meCard" class="card hidden">
+  <h2 id="meTitle"></h2>
+  <p id="meInfo" class="msg" style="margin-top:0"></p>
+  <div class="row" style="margin-top:10px"><button id="revealBtn" class="hidden">Ver meu amigo secreto</button></div>
+  <div id="result" class="reveal hidden"></div>
+</section>
+
+<section class="card">
+  <h2>Participantes (<span id="count">0</span>)</h2>
+  <ul id="list" class="l"></ul>
+  <p id="emptyMsg" class="msg">Ninguém entrou ainda. Seja o primeiro!</p>
+</section>
+
+<section class="card">
+  <details id="adm">
+    <summary>Sou o organizador</summary>
+    <div class="row" style="margin-top:12px">
+      <input id="pin" type="password" placeholder="PIN do organizador" autocomplete="off">
+      <button id="pinBtn">Entrar</button>
+    </div>
+    <div id="adminBox" class="hidden" style="margin-top:12px">
+      <div class="row">
+        <button id="startBtn">Iniciar sorteio</button>
+        <button id="resetBtn" class="ghost">Refazer sorteio</button>
+        <button id="clearBtn" class="ghost">Apagar tudo</button>
+      </div>
+    </div>
+    <p id="admMsg" class="msg"></p>
+  </details>
+</section>
+
+<section class="card">
+  <h2>Como funciona</h2>
+  <ul class="msg" style="padding-left:18px;margin:0">
+    <li>Entre só com o seu nome antes do sorteio.</li>
+    <li>Quando o organizador iniciar, toque em “Ver meu amigo secreto”.</li>
+    <li>Só você vê quem tirou. Use o mesmo aparelho em que entrou.</li>
+  </ul>
+</section>
+</main>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var TK="amigo-secreto-welcell-token",token="",pin="",state={phase:"open",names:[]},me=null,shown=false;
+  function getT(){try{return localStorage.getItem(TK)||""}catch(e){return ""}}
+  function setT(v){try{localStorage.setItem(TK,v)}catch(e){}}
+  function api(action,data){
+    var b=Object.assign({action:action},data||{});
+    return fetch("api.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json()});
+  }
+
+  function render(){
+    var drawing=state.phase==="drawing";
+    $("count").textContent=state.names.length;
+    var ul=$("list");ul.textContent="";
+    state.names.forEach(function(n){
+      var li=document.createElement("li");
+      var sp=document.createElement("span");sp.textContent="🎄 "+n+((me&&me.name===n)?" (você)":"");li.appendChild(sp);
+      if(pin&&!drawing){
+        var b=document.createElement("button");b.className="ghost";b.textContent="Remover";
+        b.onclick=function(){api("admin_remove",{pin:pin,name:n}).then(refresh)};
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+    $("emptyMsg").classList.toggle("hidden",state.names.length>0);
+
+    $("joinCard").classList.toggle("hidden",!!me||drawing);
+    $("meCard").classList.toggle("hidden",!me&&!drawing);
+    if(me){
+      $("meTitle").textContent="Você entrou como "+me.name;
+      if(drawing&&me.friend){
+        $("meInfo").textContent="O sorteio foi feito. Só você consegue ver o seu amigo secreto.";
+        $("revealBtn").classList.remove("hidden");
+        $("revealBtn").textContent=shown?"Esconder":"Ver meu amigo secreto";
+        var r=$("result");r.textContent="";
+        if(shown){
+          var a=document.createElement("div");a.textContent="Seu amigo secreto é:";
+          var b=document.createElement("div");b.className="big";b.textContent="🎁 "+me.friend;
+          var c=document.createElement("div");c.className="msg";c.textContent="Presente de R$ 100 a R$ 150.";
+          r.appendChild(a);r.appendChild(b);r.appendChild(c);r.classList.remove("hidden");
+        }else r.classList.add("hidden");
+      }else{
+        $("meInfo").textContent="Você está na lista. Aguarde o organizador iniciar o sorteio e volte aqui.";
+        $("revealBtn").classList.add("hidden");$("result").classList.add("hidden");
+      }
+    }else if(drawing){
+      $("meTitle").textContent="Sorteio em andamento";
+      $("meInfo").textContent="O sorteio já começou. Se você entrou antes, abra pelo mesmo aparelho. Se não entrou, fale com o organizador.";
+      $("revealBtn").classList.add("hidden");$("result").classList.add("hidden");
+    }
+    $("adminBox").classList.toggle("hidden",!pin);
+    $("startBtn").classList.toggle("hidden",drawing);
+    $("resetBtn").classList.toggle("hidden",!drawing);
+    $("startBtn").disabled=state.names.length<3;
+  }
+
+  function refresh(){
+    return api("state").then(function(s){if(s&&s.names){state=s}
+      if(token){return api("me",{token:token}).then(function(m){me=(m&&m.name)?m:null;if(m&&m.error==="not_found"){token="";setT("")}})}
+    }).then(render).catch(function(){});
+  }
+
+  $("joinBtn").onclick=function(){
+    var name=$("nameInput").value.trim(),m=$("joinMsg");m.className="msg";
+    if(name.length<2){m.textContent="Digite seu nome.";m.classList.add("err");return}
+    $("joinBtn").disabled=true;
+    api("join",{name:name}).then(function(r){
+      if(r.error){m.textContent=r.error;m.classList.add("err");return}
+      token=r.token;setT(token);$("nameInput").value="";return refresh();
+    }).catch(function(){m.textContent="Não consegui conectar. Tente de novo.";m.classList.add("err")})
+      .then(function(){$("joinBtn").disabled=false});
+  };
+  $("nameInput").addEventListener("keydown",function(e){if(e.key==="Enter")$("joinBtn").click()});
+  $("revealBtn").onclick=function(){shown=!shown;render()};
+
+  $("pinBtn").onclick=function(){
+    var p=$("pin").value;
+    api("admin_check",{pin:p}).then(function(r){
+      if(r.ok){pin=p;$("admMsg").textContent="";}else{pin="";$("admMsg").textContent=r.error||"PIN incorreto.";$("admMsg").className="msg err"}
+      render();
+    });
+  };
+  function adm(action,conf){
+    return function(){
+      if(conf&&!confirm(conf))return;
+      api(action,{pin:pin}).then(function(r){
+        $("admMsg").className="msg";$("admMsg").textContent=r.error||"Feito.";
+        shown=false;refresh();
+      });
+    };
+  }
+  $("startBtn").onclick=adm("admin_start","Iniciar o sorteio? Depois disso ninguém mais entra.");
+  $("resetBtn").onclick=adm("admin_reset","Refazer o sorteio? O resultado atual será apagado.");
+  $("clearBtn").onclick=adm("admin_clear","Apagar todos os participantes?");
+
+  token=getT();refresh();setInterval(refresh,8000);
+})();
+</script>
+</body>
+</html>
